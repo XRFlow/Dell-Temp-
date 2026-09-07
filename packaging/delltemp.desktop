@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=DellTemp
+Comment=Monitor CPU/GPU temperatures and fan speeds
+Exec=delltemp
+Icon=delltemp
+Terminal=false
+Type=Application
+Categories=System;Monitor;
+StartupWMClass=DellTemp
+Keywords=temperature;fan;gpu;cpu;monitor;sensors;
