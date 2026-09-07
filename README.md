@@ -31,12 +31,21 @@ Settings: `~/.config/delltemp/settings.json`. Logs: `~/.local/share/delltemp/log
 
 ## Linux .deb
 
+Self-contained amd64 installer (bundles Python and Qt, no `python3-pyqt6` needed):
+
+```bash
+./scripts/build_deb_bundle.sh
+sudo dpkg -i build/delltemp_0.3.0_amd64.deb
+```
+
+Thin package that uses system Python (smaller, needs `python3-pyqt6`):
+
 ```bash
 ./scripts/build_deb.sh
 sudo dpkg -i build/delltemp_0.3.0_all.deb
 ```
 
-GitHub Actions also builds the `.deb` on every push to `main` (see the **Actions** tab).
+GitHub Actions on `main` publishes the self-contained `.deb` plus Windows Setup.exe, MSI, and a portable zip.
 
 ## Windows
 
