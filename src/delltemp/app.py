@@ -2,6 +2,7 @@
 import argparse
 import csv
 import math
+import os
 import shutil
 import sys
 import time
@@ -511,7 +512,7 @@ class SensorWindow(QtWidgets.QMainWindow):
         self._table.cellClicked.connect(self._on_cell_clicked)
 
         self._empty = QtWidgets.QLabel(
-            "No sensors detected.\nInstall lm-sensors and run sensors-detect, then refresh."
+            _no_sensors_message()
         )
         self._empty.setObjectName("Placeholder")
         self._empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1132,6 +1133,13 @@ class DellTempApp(QtWidgets.QApplication):
 
 
 def ensure_autostart(enabled: bool, minimized: bool = True) -> None:
+    if sys.platform == "win32":
+        _ensure_autostart_windows(enabled, minimized)
+        return
+    _ensure_autostart_linux(enabled, minimized)
+
+
+def _ensure_autostart_linux(enabled: bool, minimized: bool) -> None:
     autostart_path = Path.home() / ".config" / "autostart" / "delltemp.desktop"
     if not enabled:
         if autostart_path.exists():
@@ -1152,16 +1160,71 @@ def ensure_autostart(enabled: bool, minimized: bool = True) -> None:
     )
 
 
+def _windows_startup_path() -> Path:
+    roaming = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+    return roaming / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "DellTemp.bat"
+
+
+def _ensure_autostart_windows(enabled: bool, minimized: bool) -> None:
+    path = _windows_startup_path()
+    if not enabled:
+        if path.exists():
+            path.unlink()
+        return
+    command = _windows_launch_command(minimized)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "@echo off\r\n"
+        f"{command}\r\n",
+        encoding="utf-8",
+    )
+
+
+def _windows_launch_command(minimized: bool) -> str:
+    extra = " --minimized" if minimized else ""
+    if getattr(sys, "frozen", False):
+        exe = str(Path(sys.executable).resolve())
+        return f'start "" "{exe}"{extra}'
+    python = str(Path(sys.executable).resolve())
+    src_dir = str(Path(__file__).resolve().parent.parent)
+    pythonw = python.lower().replace("python.exe", "pythonw.exe")
+    launcher = pythonw if Path(pythonw).exists() else python
+    return (
+        f'set "PYTHONPATH={src_dir}"\r\n'
+        f'start "" "{launcher}" -m delltemp{extra}'
+    )
+
+
 def _license_file() -> Path | None:
     candidates = [
         Path(__file__).resolve().parents[2] / "LICENSE",
         Path("/usr/share/doc/delltemp/copyright"),
-        Path.home() / ".local/share/doc/delltemp/copyright",
+        Path.home() / ".local" / "share" / "doc" / "delltemp" / "copyright",
     ]
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates = [
+            exe_dir / "LICENSE",
+            meipass / "LICENSE",
+            *candidates,
+        ]
     for path in candidates:
         if path.is_file():
             return path
     return None
+
+
+def _no_sensors_message() -> str:
+    if sys.platform == "win32":
+        return (
+            "No sensors detected.\n"
+            "Install NVIDIA drivers for GPU temps, or Libre Hardware Monitor for CPU/fans."
+        )
+    return (
+        "No sensors detected.\n"
+        "Install lm-sensors and run sensors-detect, then refresh."
+    )
 
 
 def _desktop_quote(value: str) -> str:
@@ -1173,6 +1236,8 @@ def _desktop_quote(value: str) -> str:
 
 
 def _autostart_command() -> str:
+    if getattr(sys, "frozen", False):
+        return _desktop_quote(str(Path(sys.executable).resolve()))
     installed = shutil.which("delltemp")
     if installed:
         return _desktop_quote(installed)

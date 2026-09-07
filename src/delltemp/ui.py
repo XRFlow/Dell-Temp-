@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import sys
 from pathlib import Path
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -228,10 +229,25 @@ def apply_theme(app: QtWidgets.QApplication) -> None:
 
 
 def app_icon() -> QtGui.QIcon:
-    candidates = [
-        Path("/usr/share/icons/hicolor/scalable/apps/delltemp.svg"),
-        Path(__file__).resolve().parents[2] / "packaging" / "delltemp.svg",
-    ]
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.extend(
+            [
+                exe_dir / "delltemp.ico",
+                meipass / "packaging" / "delltemp.ico",
+                meipass / "packaging" / "delltemp.svg",
+            ]
+        )
+    repo = Path(__file__).resolve().parents[2]
+    candidates.extend(
+        [
+            repo / "packaging" / "delltemp.ico",
+            repo / "packaging" / "delltemp.svg",
+            Path("/usr/share/icons/hicolor/scalable/apps/delltemp.svg"),
+        ]
+    )
     for path in candidates:
         if path.exists():
             return QtGui.QIcon(str(path))

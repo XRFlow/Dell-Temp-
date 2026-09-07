@@ -4,8 +4,9 @@ import math
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Optional
+from typing import Any, Callable, Iterable, List, Optional
 
 import psutil
 
@@ -32,6 +33,7 @@ def collect_readings() -> List[SensorReading]:
     psutil_fans = _safe_collect(_from_psutil_fans)
     lm_readings = _safe_collect(_from_lm_sensors)
     nvidia_readings = _safe_collect(_from_nvidia_smi)
+    windows_readings = _safe_collect(_from_windows)
 
     readings: List[SensorReading] = []
     lm_categories = {reading.category for reading in lm_readings}
@@ -41,6 +43,7 @@ def collect_readings() -> List[SensorReading]:
         readings.extend(psutil_fans)
     readings.extend(lm_readings)
     readings.extend(nvidia_readings)
+    readings.extend(windows_readings)
     return [_normalize_reading(reading) for reading in _dedupe(readings)]
 
 
@@ -100,6 +103,81 @@ def parse_lm_sensors_payload(payload: dict) -> List[SensorReading]:
                         identity=str(key),
                     )
                 )
+    return readings
+
+
+def parse_windows_acpi_temps(payload: Any) -> List[SensorReading]:
+    items = _as_item_list(payload)
+    readings: List[SensorReading] = []
+    for index, item in enumerate(items):
+        name = str(item.get("Name") or item.get("InstanceName") or f"Zone {index}")
+        celsius = _finite_float(item.get("C") if "C" in item else item.get("Celsius"))
+        if celsius is None:
+            tenths_k = _finite_float(item.get("CurrentTemperature"))
+            if tenths_k is not None:
+                celsius = (tenths_k / 10.0) - 273.15
+        if celsius is None:
+            continue
+        readings.append(
+            SensorReading(
+                category="Temperature",
+                name=humanize(name.split("\\")[-1]),
+                value=celsius,
+                unit="°C",
+                source="wmi",
+                group="ACPI Thermal",
+                identity=str(item.get("InstanceName") or index),
+            )
+        )
+    return readings
+
+
+def parse_ohm_sensors(payload: Any) -> List[SensorReading]:
+    items = _as_item_list(payload)
+    readings: List[SensorReading] = []
+    for index, item in enumerate(items):
+        sensor_type = str(item.get("SensorType") or "").strip()
+        value = _finite_float(item.get("Value"))
+        if value is None:
+            continue
+        name = str(item.get("Name") or sensor_type or f"Sensor {index}")
+        ident = str(item.get("Identifier") or index)
+        if sensor_type.lower() == "temperature":
+            readings.append(
+                SensorReading(
+                    category="Temperature",
+                    name=humanize(name),
+                    value=value,
+                    unit="°C",
+                    source="lhm",
+                    group="Hardware Monitor",
+                    identity=ident,
+                )
+            )
+        elif sensor_type.lower() == "fan":
+            readings.append(
+                SensorReading(
+                    category="Fan",
+                    name=humanize(name),
+                    value=value,
+                    unit="RPM",
+                    source="lhm",
+                    group="Hardware Monitor",
+                    identity=ident,
+                )
+            )
+        elif sensor_type.lower() == "voltage":
+            readings.append(
+                SensorReading(
+                    category="Voltage",
+                    name=humanize(name),
+                    value=value,
+                    unit="V",
+                    source="lhm",
+                    group="Hardware Monitor",
+                    identity=ident,
+                )
+            )
     return readings
 
 
@@ -234,18 +312,7 @@ def _from_lm_sensors() -> Iterable[SensorReading]:
     if not shutil.which("sensors"):
         return []
 
-    try:
-        result = subprocess.run(
-            ["sensors", "-j"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (subprocess.SubprocessError, OSError):
-        return []
-
-    stdout = (result.stdout or "").strip()
+    stdout = _run_command(["sensors", "-j"], timeout=2)
     if not stdout:
         return []
 
@@ -293,28 +360,97 @@ def _category_for_key(key: str) -> tuple[str, str]:
 
 
 def _from_nvidia_smi() -> Iterable[SensorReading]:
-    if not shutil.which("nvidia-smi"):
+    binary = shutil.which("nvidia-smi") or shutil.which("nvidia-smi.exe")
+    if not binary:
         return []
-
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,temperature.gpu,fan.speed",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (subprocess.SubprocessError, OSError):
-        return []
-
-    stdout = (result.stdout or "").strip()
+    stdout = _run_command(
+        [
+            binary,
+            "--query-gpu=name,temperature.gpu,fan.speed",
+            "--format=csv,noheader,nounits",
+        ],
+        timeout=2,
+    )
     if not stdout:
         return []
     return parse_nvidia_smi_csv(stdout)
+
+
+def _from_windows() -> Iterable[SensorReading]:
+    if sys.platform != "win32":
+        return []
+    readings: List[SensorReading] = []
+    readings.extend(parse_windows_acpi_temps(_powershell_json(_ACPI_TEMP_SCRIPT)))
+    readings.extend(parse_ohm_sensors(_powershell_json(_OHM_SENSOR_SCRIPT)))
+    return readings
+
+
+_ACPI_TEMP_SCRIPT = (
+    "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature "
+    "-ErrorAction SilentlyContinue | "
+    "ForEach-Object { @{ Name = $_.InstanceName; "
+    "C = [math]::Round(($_.CurrentTemperature / 10) - 273.15, 1); "
+    "InstanceName = $_.InstanceName } } | ConvertTo-Json -Compress"
+)
+
+_OHM_SENSOR_SCRIPT = (
+    "$out = $null; "
+    "foreach ($ns in @('root/LibreHardwareMonitor','root/OpenHardwareMonitor')) { "
+    "  try { "
+    "    $out = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop | "
+    "      Select-Object Name, SensorType, Value, Identifier; "
+    "    if ($out) { break } "
+    "  } catch {} "
+    "} "
+    "if ($out) { $out | ConvertTo-Json -Compress }"
+)
+
+
+def _run_command(argv: list[str], timeout: float = 2) -> str:
+    kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+        "check": False,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        result = subprocess.run(argv, **kwargs)
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _powershell_json(script: str) -> Any:
+    raw = _run_command(
+        [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        timeout=2,
+    )
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def _as_item_list(payload: Any) -> list[dict]:
+    if payload is None:
+        return []
+    if isinstance(payload, dict):
+        return [payload]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
 
 
 def _dedupe(readings: List[SensorReading]) -> List[SensorReading]:

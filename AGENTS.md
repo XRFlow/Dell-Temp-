@@ -1,14 +1,16 @@
 # Repository Guidelines
 
 ## Overview
-DellTemp is a PyQt6 desktop tray + dashboard for Linux hardware sensors (psutil, lm-sensors, nvidia-smi). Python sources live under `src/delltemp/`.
+DellTemp is a PyQt6 desktop tray + dashboard for Linux and Windows hardware sensors (psutil, lm-sensors, nvidia-smi, Windows WMI / Libre Hardware Monitor). Python sources live under `src/delltemp/`.
 
 ## Project Structure & Module Organization
 - `src/delltemp/`: application source (`app.py` UI/tray, `sensors.py` collectors, `settings.py` persistence).
 - `tests/`: unit tests mirroring `src/delltemp` modules (e.g. `tests/test_sensors.py`).
-- `packaging/`: desktop launcher, SVG icon, and Debian copyright used by the .deb.
+- `packaging/`: Linux desktop/SVG, Windows ICO, PyInstaller spec, Inno Setup script, WiX MSI sources.
 - `LICENSE`: GNU GPL v3 (or later).
 - `scripts/build_deb.sh`: Debian package builder.
+- `scripts/build_windows.ps1`: Windows onedir + EXE installer + MSI (run on Windows).
+- `.github/workflows/build.yml`: CI for `.deb`, Setup.exe, MSI, and portable zip.
 - `assets/` (optional): static files such as images or data fixtures.
 
 If you introduce a new top-level directory, document it here.
@@ -19,6 +21,7 @@ If you introduce a new top-level directory, document it here.
 - `PYTHONPATH=src python3 -m delltemp` — same, but must be run from the repo root.
 - `PYTHONPATH=src python3 -m pytest tests` — run the unit test suite.
 - `./scripts/build_deb.sh` — build `build/delltemp_<version>_all.deb`.
+- `./scripts/build_windows.ps1` — Windows PyInstaller + Inno EXE + WiX MSI (Windows only).
 
 ## Coding Style & Naming Conventions
 - Indentation: 2 spaces for web languages, 4 spaces for Python, and tabs only if the language standard requires it.

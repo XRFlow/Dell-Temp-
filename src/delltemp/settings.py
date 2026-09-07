@@ -144,11 +144,21 @@ class Settings:
         return settings.clamp()
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
 def config_path() -> Path:
+    if _is_windows():
+        base = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+        return base / "DellTemp" / "settings.json"
     return Path.home() / ".config" / "delltemp" / "settings.json"
 
 
 def data_dir() -> Path:
+    if _is_windows():
+        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        return base / "DellTemp"
     return Path.home() / ".local" / "share" / "delltemp"
 
 

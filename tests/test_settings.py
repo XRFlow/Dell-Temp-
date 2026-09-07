@@ -87,3 +87,14 @@ def test_copy_isolates_favorites() -> None:
     clone = settings.copy()
     clone.favorites.add("b")
     assert settings.favorites == {"a"}
+
+
+def test_windows_config_paths(tmp_path, monkeypatch) -> None:
+    from delltemp import settings as settings_mod
+
+    monkeypatch.setattr(settings_mod, "_is_windows", lambda: True)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    assert settings_mod.config_path() == tmp_path / "Roaming" / "DellTemp" / "settings.json"
+    assert settings_mod.data_dir() == tmp_path / "Local" / "DellTemp"
+    assert settings_mod.logs_dir() == tmp_path / "Local" / "DellTemp" / "logs"

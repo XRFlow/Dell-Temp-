@@ -8,6 +8,8 @@ from delltemp.sensors import (
     format_sensor_value,
     parse_lm_sensors_payload,
     parse_nvidia_smi_csv,
+    parse_ohm_sensors,
+    parse_windows_acpi_temps,
     reading_key,
     sanitize_lm_sensors_json,
 )
@@ -162,3 +164,28 @@ def test_collect_readings_isolates_collector_failure(monkeypatch) -> None:
     readings = collect_readings()
     assert len(readings) == 1
     assert readings[0].source == "nvidia-smi"
+
+
+def test_parse_windows_acpi_temps() -> None:
+    payload = [
+        {"Name": "ACPI\\ThermalZone\\TZ01", "C": 47.5, "InstanceName": "TZ01"},
+        {"InstanceName": "TZ02", "CurrentTemperature": 3100},
+    ]
+    readings = parse_windows_acpi_temps(payload)
+    assert len(readings) == 2
+    assert readings[0].value == 47.5
+    assert readings[0].source == "wmi"
+    assert round(readings[1].value, 1) == 36.9
+
+
+def test_parse_ohm_sensors() -> None:
+    payload = {
+        "Name": "CPU Package",
+        "SensorType": "Temperature",
+        "Value": 62.0,
+        "Identifier": "/intelcpu/0/temperature/0",
+    }
+    readings = parse_ohm_sensors(payload)
+    assert len(readings) == 1
+    assert readings[0].source == "lhm"
+    assert readings[0].unit == "°C"

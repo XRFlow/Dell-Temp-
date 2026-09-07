@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="DellTemp"
+      Language="1033"
+      Version="$(var.ProductVersion)"
+      Manufacturer="XRFlow"
+      UpgradeCode="6D6674D6-7790-49AD-A8CE-8D6040CBDE09">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DellTemp is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.exe" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/XRFlow/Dell-Temp-" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/XRFlow/Dell-Temp-" />
+    <Property Id="ARPCONTACT" Value="support@xrflows.com" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="DellTemp" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="DellTemp" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="B3E1C8A0-4D2F-4B91-9C17-6A2F0E8D4B11">
+        <Shortcut
+            Id="StartMenuDellTemp"
+            Name="DellTemp"
+            Description="CPU, GPU, and chassis sensor monitor"
+            Target="[INSTALLFOLDER]DellTemp.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="AppIcon.exe" />
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\XRFlow\DellTemp" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="C4F2D9B1-5E30-4C82-AD28-7B3F1F9E5C22">
+        <Shortcut
+            Id="DesktopDellTemp"
+            Name="DellTemp"
+            Target="[INSTALLFOLDER]DellTemp.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="AppIcon.exe" />
+        <RegistryValue Root="HKCU" Key="Software\XRFlow\DellTemp" Name="desktop" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainApplication" Title="DellTemp" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+  </Product>
+</Wix>
